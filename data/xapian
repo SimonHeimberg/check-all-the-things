@@ -1,0 +1,4 @@
+[xapian-check]
+flags = todo
+apt = xapian-tools
+command = xapian-check {dir}
