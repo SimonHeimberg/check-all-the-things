@@ -356,6 +356,10 @@ def process(self, choices):
             action = self.enable
         elif choice.startswith('-'):
             action = self.disable
+        elif choice.startswith('&'):
+            action = self.intersection
+        elif choice.startswith('^'):
+            action = self.extersection
         else:
             arg = choice
         if arg is None:
@@ -431,6 +435,17 @@ class GroupSelectionAction(argparse.Action):
             if not check.__getattribute__(self.name).isdisjoint(groups):
                 self.checks[name].disabled.add(self.msg)
 
+    def intersection(self, groups):
+        self.groups.intersection_update(groups)
+        for name, check in self.checks.items():
+            if not check.__getattribute__(self.name).isdisjoint(groups):
+                self.checks[name].disabled.clear()
+
+    def extersection(self, groups):
+        self.groups.symmetric_difference_update(groups)
+        for name, check in self.checks.items():
+            if not check.__getattribute__(self.name).isdisjoint(groups):
+                self.checks[name].disabled.add(self.msg)
 
 def parse_section(section):
     check = Check()
