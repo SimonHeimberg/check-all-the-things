@@ -29,4 +29,11 @@ Only inform about a skipped check if there were actually matching files.
 
 A mechanism to specify the amount/pedanticness of the output.
 
+Switch to sphinx and sphinxcontrib-autoprogram for manual pages:
+
+<DonnchaC> pabs: I've got sphinx and sphinxcontrib-autoprogram working to produce man pages at package build time
+<DonnchaC> Sphinx config: https://github.com/DonnchaC/onionbalance/blob/cli-doc-page/docs/conf.py
+<DonnchaC> Example document page: https://raw.githubusercontent.com/DonnchaC/onionbalance/cli-doc-page/docs/running-onionbalance.rst
+<DonnchaC> I'm just calling 'sphinx-build -N -bman docs/ docs/_build/man' in `override_dh_auto_build` and adding the correct paths to onionbalance.manpages
+
 .. vim:ts=3 sw=3 et ft=rst
