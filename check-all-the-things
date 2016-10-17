@@ -815,6 +815,77 @@ def set_debian_substvars(checks):
         print('cats:Suggests={}'.format(suggests), file=substvars)
 
 
+def strip_path(script):
+    paths = os.environ.get('PATH', os.defpath).split(os.pathsep)
+    dir = os.path.dirname(script)
+    for path in paths:
+        if dir == path:
+            return os.path.basename(script)
+    return script
+
+
+def root_cmd(cmd):
+    import grp
+    user = os.getlogin()
+    for group in grp.getgrall():
+        if group.gr_name == 'sudo' and user in group.gr_mem:
+            return ['sudo'] + cmd
+    return 'su -c'.split() + [shlex.quote(' '.join(cmd))]
+
+
+def install_apt(matching_checks, checks):
+    try:
+        import apt_pkg
+        apt_pkg.init_system()
+    except ImportError:
+        print('ERROR: Python apt module not installed', file=sys.stderr)
+        sys.exit(1)
+    check_deps = []
+    for name, check in checks.items():
+        if name not in matching_checks or check.disabled or not check.apt:
+            continue
+        try:
+            check.meet_prereq()
+        except UnmetPrereq:
+            check_deps.append(check.apt)
+    deps = ', '.join(sorted(check_deps))
+    build_deps = 'Build-Depends: ' + deps
+    if which('apt'):
+        version = ipc.check_output('apt --version'.split()).split()[1]
+        if apt_pkg.version_compare(version, '1.2.2~') >= 0:
+            from tempfile import NamedTemporaryFile as tmp
+            dsc = tmp(mode='w', prefix='check-all-the-things-install-', suffix='.dsc', delete=False)
+            print(build_deps, file=dsc)
+            dsc.close()
+            cmd = 'apt build-dep'.split()
+            cmd.append(dsc.name)
+            cmd = root_cmd(cmd)
+            missing = 'foo bar'.split()
+            commands = 'foo bar'.split()
+            print('Installing checks:', *missing)
+            print('Installing commands:', *commands)
+            print('Installing packages:', deps)
+            print(build_deps)
+            print('$', *cmd)
+            p = ipc.Popen(cmd)
+            try:
+                ret = p.wait()
+                if ret != 0:
+                    print('apt returned failure code: {}'.format(ret))
+            except KeyboardInterrupt:
+                try:
+                    p.terminate()
+                except OSError:
+                    pass
+                ret = p.wait()
+                print()
+            os.unlink(dsc.name)
+            sys.exit(ret)
+        else:
+            print('ERROR: apt earlier than version 1.2.2 not supported yet', file=sys.stderr)
+            sys.exit(1)
+
+
 def walk(typedb, checks, remarks, matching_checks, parent, top):
     matched_globs = collections.defaultdict(set)
     matched_names = collections.defaultdict(set)
@@ -991,6 +1062,9 @@ def main():
                  " makes more complicated commands.")
     ap.add_argument('--mime', dest='mime', action='store_true', help='Enable '+mime_help)
     ap.add_argument('--no-mime', dest='mime', action='store_false', help='Disable '+mime_help)
+    ap.add_argument('--install', type=str,
+                    help="install missing or chosen check commands via a package manager",
+                    default=None, choices=['apt'])
     ap.set_defaults(mime=False)
     if argcomplete:
         argcomplete.autocomplete(ap)
@@ -1025,6 +1099,14 @@ def main():
     if typedb:
         typedb.close()
     types = bool(typedb)
+    if options.install == 'apt':
+        install_apt(matching_checks, checks)
+    else:
+        script = strip_path(sys.argv[0])
+        install_cmd = [shlex.quote(script)]
+        install_cmd += '--install apt'.split()
+        install_cmd += [shlex.quote(arg) for arg in sys.argv[1:]]
+        install_cmd = ' '.join(install_cmd)
     for name, check in sorted(checks.items()):
         next = False
         if name not in matching_checks:
@@ -1037,6 +1119,7 @@ def main():
             check.meet_prereq()
         except UnmetPrereq as exc:
             remark(remarks, name, str(exc))
+            remark(remarks, None, 'commands can be installed with: {}'.format(install_cmd))
             exc = None
         else:
             if (time.time() - last_interrupt) < options.interrupt_period:
